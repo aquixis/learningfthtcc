@@ -1,0 +1,70 @@
+#include <WiFi.h>              // Inclui a biblioteca para conexão com Wi-Fi
+#include <PubSubClient.h>     // Inclui a biblioteca para comunicação MQTT
+
+// Definições das credenciais da rede Wi-Fi e do servidor MQTT
+const char* ssid = "SEU_SSID";             // Nome da rede Wi-Fi
+const char* password = "SUA_SENHA";        // Senha da rede Wi-Fi
+const char* mqtt_server = "ENDERECO_DO_BROKER"; // Endereço do broker MQTT
+
+WiFiClient espClient;                     // Cria um cliente Wi-Fi
+PubSubClient client(espClient);           // Cria um cliente MQTT com o cliente Wi-Fi
+
+// Função de configuração inicial
+void setup() {
+  Serial.begin(115200);                  // Inicializa a comunicação serial com a taxa de 115200 bps
+  setup_wifi();                          // Chama a função para conectar ao Wi-Fi
+  client.setServer(mqtt_server, 1883);   // Configura o servidor MQTT e a porta (1883 é a porta padrão)
+  client.setCallback(callback);          // Define a função de callback para processar mensagens recebidas
+}
+
+// Função para conectar ao Wi-Fi
+void setup_wifi() {
+  delay(10);                             // Aguarda 10 ms para garantir uma inicialização suave
+  WiFi.begin(ssid, password);            // Inicia a conexão com a rede Wi-Fi usando o SSID e senha fornecidos
+  while (WiFi.status() != WL_CONNECTED) { // Loop até que a conexão com o Wi-Fi seja estabelecida
+    delay(500);                          // Aguarda 500 ms antes de verificar novamente
+    Serial.print(".");                  // Imprime um ponto no monitor serial para indicar progresso
+  }
+  Serial.println("WiFi conectado");      // Informa que a conexão com o Wi-Fi foi estabelecida
+}
+
+// Função de callback chamada quando uma mensagem é recebida no MQTT
+void callback(char* topic, byte* message, unsigned int length) {
+  String msg;                           // String para armazenar a mensagem recebida
+  for (int i = 0; i < length; i++) {    // Loop para ler a mensagem byte a byte
+    msg += (char)message[i];            // Adiciona cada byte à String msg
+  }
+
+  // Verifica o tópico da mensagem recebida
+  if (String(topic) == "/casa/bomba") {
+    if (msg == "LIGAR") {
+      digitalWrite(pumpPin, HIGH);     // Liga a bomba se a mensagem for "LIGAR"
+    } else if (msg == "DESLIGAR") {
+      digitalWrite(pumpPin, LOW);      // Desliga a bomba se a mensagem for "DESLIGAR"
+    }
+  }
+}
+
+// Função para garantir que o cliente MQTT esteja conectado
+void reconnect() {
+  while (!client.connected()) {          // Loop até que a conexão MQTT seja estabelecida
+    if (client.connect("ESP32Client")) { // Tenta conectar ao broker MQTT com um ID de cliente
+      // Se a conexão for bem-sucedida, você pode se inscrever em tópicos aqui
+    } else {
+      delay(5000);                      // Aguarda 5 segundos antes de tentar reconectar
+    }
+  }
+}
+
+// Função principal de loop
+void loop() {
+  if (!client.connected()) {            // Verifica se o cliente MQTT está conectado
+    reconnect();                        // Se não estiver, tenta reconectar
+  }
+  client.loop();                        // Mantém a conexão MQTT e processa mensagens recebidas
+
+  // Exemplo de leitura e publicação de dados dos sensores
+  int tempValue = analogRead(tempPin);  // Lê o valor do sensor de temperatura
+  String tempStr = String(tempValue);   // Converte o valor para uma String
+  client.publish("/casa/temperatura", tempStr.c_str()); // Publica o valor da temperatura no tópico MQTT
+}
