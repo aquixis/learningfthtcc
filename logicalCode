@@ -1,0 +1,67 @@
+#include <Servo.h>
+
+// Pinos
+const int umidadeSensor1Pin = 34; // Sensor de umidade da baía 1 
+const int umidadeSensor2Pin = 35; // Sensor de umidade da baía 2 
+const int releSolenoide1Pin = 32;  // Relé da solenoide da baía 1
+const int releSolenoide2Pin = 33;  // Relé da solenoide da baía 2
+const int releBombaPin = 25;       // Relé da bomba
+const int servoPin = 26;           // Servo motor
+const int ledPin = 27;             // LEDs
+
+// Associação dos valores para umidade e criação de objetos para simplificação do cód
+int umidadeParametro1 = 300; // Umidade mínima para baía 1
+int umidadeParametro2 = 300; // Umidade mínima para baía 2
+int umidadeLeitura1;         // Leitura do sensor de umidade da baía 1
+int umidadeLeitura2;         // Leitura do sensor de umidade da baía 2
+
+// Parâmetros de tempo
+int servoTime = 5000;        // Tempo que o Servo ficará ativo
+int ledTime = 3000;          // Tempo que os LEDs ficarão acesos 
+
+// Criação do objeto Servo
+Servo myServo;
+
+void setup() {
+  //Inicialização do Servo
+    myServo.attach(servoPin);
+    
+    // Inicialização dos pinos
+    pinMode(releSolenoide1Pin, OUTPUT);
+    pinMode(releSolenoide2Pin, OUTPUT);
+    pinMode(releBombaPin, OUTPUT);
+    pinMode(ledPin, OUTPUT);
+}
+
+void loop() {
+    // Leitura da umidade
+    umidadeLeitura1 = analogRead(umidadeSensor1Pin);
+    umidadeLeitura2 = analogRead(umidadeSensor2Pin);
+
+    // Lógica para a baía 1
+    if (umidadeLeitura1 < umidadeParametro1) {
+        digitalWrite(releSolenoide1Pin, HIGH); // Abre a solenoide da baía 1
+        digitalWrite(releBombaPin, HIGH);      // Liga a bomba
+    } else {
+        digitalWrite(releSolenoide1Pin, LOW);  // Fecha a solenoide da baía 1
+        digitalWrite(releBombaPin, LOW);       // Desliga a bomba (se as duas baías atingirem o nível de umidade)
+    }
+
+    // Lógica para a baía 2
+    if (umidadeLeitura2 < umidadeParametro2) {
+        digitalWrite(releSolenoide2Pin, HIGH); // Abre a solenoide da baía 2
+        digitalWrite(releBombaPin, HIGH);      // Liga a bomba
+    } else {
+        digitalWrite(releSolenoide2Pin, LOW);  // Fecha a solenoide da baía 2
+        digitalWrite(releBombaPin, LOW);       // Desliga a bomba
+    }
+
+    // Controle do servo motor para abrir e fechar a cortina 
+    myServo.write(90); // Fecha a cortina
+    delay(servoTime); // Tempo que ficará fechado
+    digitalWrite(ledPin, HIGH); // Liga as Leds após a cortina fechar 
+    delay(ledTime); // Tempo que ficarão acesas 
+
+    digitalWrite(ledPin, LOW); //Desliga as leds
+    myServo.write(0); // Abre a cortina
+}
