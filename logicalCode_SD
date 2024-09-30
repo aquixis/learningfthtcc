@@ -1,0 +1,108 @@
+#include <ESP32Servo.h>
+#include <SD.h>
+
+const int chipSelect = 5;  // Pino CS do cartão SD
+const int releBomba = 15;  // Pino do relé da bomba
+const int releSolenoide1 = 2;  // Pino do relé da solenoide 1
+const int releSolenoide2 = 4;  // Pino do relé da solenoide 2
+const int umidadeSensorBaia1 = 34;  // Pino do sensor de umidade da baía 1
+const int umidadeSensorBaia2 = 35;  // Pino do sensor de umidade da baía 2
+const int servoPin = 18;  // Pino do servo
+const int ledPin = 5;  // Pino dos LEDs
+
+int umidadeParametro;
+int intervaloIrrigacao;
+int tempoIrrigacao;
+int tempoLuz;
+int intervaloLuz;
+
+Servo servo;
+unsigned long ultimaIrrigacao = 0;  // Controla o tempo da última irrigação
+unsigned long ultimoBanhoLuz = 0;   // Controla o tempo do último banho de luz
+
+void setup() {
+  Serial.begin(9600);
+
+  // Inicializa o cartão SD
+  if (!SD.begin(chipSelect)) {
+    Serial.println("Falha ao acessar o cartão SD!");
+    return;
+  }
+
+  Serial.println("Cartão SD inicializado com sucesso.");
+  carregarDadosVegetal();
+
+  // Configuração dos pinos dos relés e sensores
+  pinMode(releBomba, OUTPUT);
+  pinMode(releSolenoide1, OUTPUT);
+  pinMode(releSolenoide2, OUTPUT);
+  pinMode(ledPin, OUTPUT);
+
+  // Inicializa os pinos dos relés como desligados
+  digitalWrite(releBomba, LOW);
+  digitalWrite(releSolenoide1, LOW);
+  digitalWrite(releSolenoide2, LOW);
+  digitalWrite(ledPin, LOW);
+
+  // Inicializa o servo
+  servo.attach(servoPin);
+}
+
+void loop() {
+  int umidadeBaia1 = analogRead(umidadeSensorBaia1);
+  int umidadeBaia2 = analogRead(umidadeSensorBaia2);
+
+  Serial.print("Umidade Baia 1: ");
+  Serial.println(umidadeBaia1);
+  Serial.print("Umidade Baia 2: ");
+  Serial.println(umidadeBaia2);
+
+  // Verifica a umidade das duas baías e realiza a irrigação se necessário
+  if (millis() - ultimaIrrigacao > intervaloIrrigacao) {
+    if (umidadeBaia1 < umidadeParametro || umidadeBaia2 < umidadeParametro) {
+      // Aciona a bomba e as solenoides
+      digitalWrite(releBomba, HIGH);
+      digitalWrite(releSolenoide1, HIGH);
+      digitalWrite(releSolenoide2, HIGH);
+      delay(tempoIrrigacao);  // Tempo que a irrigação deve ocorrer
+      digitalWrite(releBomba, LOW);
+      digitalWrite(releSolenoide1, LOW);
+      digitalWrite(releSolenoide2, LOW);
+      ultimaIrrigacao = millis();  // Atualiza o tempo da última irrigação
+    }
+  }
+
+  // Controle do banho de luz com o servo e LEDs
+  if (millis() - ultimoBanhoLuz > intervaloLuz) {
+    digitalWrite(ledPin, HIGH);
+    servo.write(90);  // Fecha o domo com o servo
+    delay(tempoLuz);
+
+    digitalWrite(ledPin, LOW);
+    servo.write(0);  // Abre o domo
+    ultimoBanhoLuz = millis();  // Atualiza o tempo do último banho de luz
+  }
+}
+
+void carregarDadosVegetal() {
+  File arquivo = SD.open("dados.txt");
+
+  if (arquivo) {
+    // Lê o arquivo e carrega as informações do vegetal
+    umidadeParametro = arquivo.parseInt();
+    intervaloIrrigacao = arquivo.parseInt();
+    tempoIrrigacao = arquivo.parseInt();
+    tempoLuz = arquivo.parseInt();
+    intervaloLuz = arquivo.parseInt();
+
+    if (umidadeParametro == 0 || intervaloIrrigacao == 0 || tempoIrrigacao == 0 || tempoLuz == 0 || intervaloLuz == 0) {
+      Serial.println("Erro ao carregar os dados do vegetal!");
+    } else {
+      Serial.println("Dados carregados com sucesso!");
+    }
+    
+    arquivo.close();
+  } else {
+    Serial.println("Erro ao abrir o arquivo de dados.");
+  }
+}
