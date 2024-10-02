@@ -1,0 +1,91 @@
+#include <Servo.h>
+
+// Definindo os pinos de controle
+const int releBomba = 12;    // Pino para a bomba
+const int solenoide1 = 13;   // Pino para a primeira solenoide
+const int solenoide2 = 14;   // Pino para a segunda solenoide
+const int fitaLed1 = 15;     // Pino para a fita de LED 1
+const int fitaLed2 = 16;     // Pino para a fita de LED 2
+const int sensorUmidade = 34; // Pino do sensor de umidade
+
+Servo servo1;  // Servo motor 1
+Servo servo2;  // Servo motor 2
+
+// Pinos para os servos
+const int servo1Pin = 17;
+const int servo2Pin = 18;
+
+// Definindo os tempos máximos para iluminação e irrigação em segundos
+const unsigned long tempoMaxIluminacao = 60000; // 60.000 segundos (16h 40min)
+const unsigned long tempoMaxIrrigacao = 30000;  // 30.000 segundos (8h 20min)
+
+// Variáveis de controle
+unsigned long iluminacaoTotal = 0;
+unsigned long irrigacaoTotal = 0;
+const int umidadeMax = 120;  // Umidade desejada (ajustar conforme o sensor)
+
+// Função para ler umidade (substitua com o código correto do sensor)
+int lerUmidade() {
+  int umidadeAtual = analogRead(sensorUmidade); // Leitura analógica do sensor
+  return umidadeAtual;
+}
+
+void setup() {
+  // Configurando os pinos como saída
+  pinMode(releBomba, OUTPUT);
+  pinMode(solenoide1, OUTPUT);
+  pinMode(solenoide2, OUTPUT);
+  pinMode(fitaLed1, OUTPUT);
+  pinMode(fitaLed2, OUTPUT);
+
+  // Inicializando os dispositivos como desligados
+  digitalWrite(releBomba, LOW);
+  digitalWrite(solenoide1, LOW);
+  digitalWrite(solenoide2, LOW);
+  digitalWrite(fitaLed1, LOW);
+  digitalWrite(fitaLed2, LOW);
+
+  // Inicializando os servos
+  servo1.attach(servo1Pin);
+  servo2.attach(servo2Pin);
+
+  // Inicializando a posição dos servos
+  servo1.write(0);  // Posição inicial do servo 1
+  servo2.write(0);  // Posição inicial do servo 2
+
+  Serial.begin(115200); // Inicializando a comunicação serial para debug
+}
+
+void loop() {
+  // Atualiza a umidade
+  int umidadeAtual = lerUmidade();
+
+  // Controle da irrigação
+  if (umidadeAtual < umidadeMax && irrigacaoTotal < tempoMaxIrrigacao) {
+    digitalWrite(releBomba, HIGH);  // Liga a bomba
+    digitalWrite(solenoide1, HIGH); // Abre a solenoide 1
+    digitalWrite(solenoide2, HIGH); // Abre a solenoide 2
+    irrigacaoTotal += 5; // Incrementa o tempo de irrigação em 5 segundos
+  } else {
+    digitalWrite(releBomba, LOW);   // Desliga a bomba
+    digitalWrite(solenoide1, LOW);  // Fecha a solenoide 1
+    digitalWrite(solenoide2, LOW);  // Fecha a solenoide 2
+  }
+
+  // Controle da iluminação
+  if (iluminacaoTotal < tempoMaxIluminacao) {
+    digitalWrite(fitaLed1, HIGH);  // Liga a fita de LED 1
+    digitalWrite(fitaLed2, HIGH);  // Liga a fita de LED 2
+    servo1.write(90);              // Muda a posição do servo 1
+    servo2.write(90);              // Muda a posição do servo 2
+    iluminacaoTotal += 5;          // Incrementa o tempo de iluminação em 5 segundos
+  } else {
+    digitalWrite(fitaLed1, LOW);   // Desliga a fita de LED 1
+    digitalWrite(fitaLed2, LOW);   // Desliga a fita de LED 2
+    servo1.write(0);               // Retorna o servo 1 à posição inicial
+    servo2.write(0);               // Retorna o servo 2 à posição inicial
+  }
+
+  // Delay de 5 segundos no loop
+  delay(5000);
+}
