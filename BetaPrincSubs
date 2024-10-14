@@ -1,0 +1,183 @@
+// < Bibliotecas para o código >
+#include <WiFi.h>                   // Estabelecer a conexão da ESP32 à rede Wi-Fi.
+#include <PubSubClient.h>           // Gerenciar a comunicação MQTT entre a ESP32 e o servidor/broker MQTT.
+#include <ESP32Servo.h>             // Controlar os servo motores para o fechamento do domo e tubulação de água.
+
+// Variáveis (Pinos GPIO)
+const int releSolenoideBaia1 = 16;  // Servo motor que controla a tubulação da Baia 1
+const int releSolenoideBaia2 = 17;  // Servo motor que controla a tubulação da Baia 2
+const int pinoReleBomba = 18;       // Relé da bomba de água
+const int pinoServoDireito1 = 19;   // Servo direito da Baia 1 (Domo)
+const int pinoServoDireito2 = 20;   // Servo direito da Baia 1 (Domo) - pino diferente
+const int pinoServoEsquerdo1 = 21;  // Servo esquerdo da Baia 2 (Domo)
+const int pinoServoEsquerdo2 = 22;  // Servo esquerdo da Baia 2 (Domo) - pino diferente
+const int umidadeSensorBaia1 = 32;  // Sensor de umidade da Baia 1
+const int umidadeSensorBaia2 = 33;  // Sensor de umidade da Baia 2
+const int nivelSensor = 34;         // Sensor de nível do reservatório
+const int ledBaia1 = 25;            // LED da Baia 1
+const int ledBaia2 = 26;            // LED da Baia 2
+
+// [Variáveis Servos]
+const int ServoFechado = 0;
+const int ServoAberto = 90;
+
+bool domoFechado = true;            // Indica se o domo está fechado
+bool aguardandoIntervalo = false;   // Indica se está aguardando o intervalo do domo
+
+unsigned long tempoAnterior;
+unsigned long temAntLed;
+
+//[Variáveis Bomba, Solenoides, Sensores]
+int umidadeDesejada1 = 50; // Defina a umidade desejada para a Baia 1
+int umidadeDesejada2 = 50; // Defina a umidade desejada para a Baia 2
+
+// Variáveis de umidade
+int umidadeBaia1;
+int umidadeBaia2;
+
+// Variáveis Servo
+Servo solenoideBaia1;
+Servo solenoideBaia2;
+Servo servoDireito1;
+Servo servoDireito2;
+Servo servoEsquerdo1;
+Servo servoEsquerdo2;
+
+const struct {
+
+}
+
+void setup() {
+  // Configurar pinos de entrada/saída
+  pinMode(pinoReleBomba, OUTPUT);
+  pinMode(umidadeSensorBaia1, INPUT);
+  pinMode(umidadeSensorBaia2, INPUT);
+  pinMode(nivelSensor, INPUT);
+  pinMode(ledBaia1, OUTPUT);
+  pinMode(ledBaia2, OUTPUT);
+
+  // Atribuir pinos aos servos
+  solenoideBaia1.attach(releSolenoideBaia1);  // Servo que controla a tubulação da Baia 1
+  solenoideBaia2.attach(releSolenoideBaia2);  // Servo que controla a tubulação da Baia 2
+  servoDireito1.attach(pinoServoDireito1);    // Servo direito do domo da Baia 1
+  servoDireito2.attach(pinoServoDireito2);    // Servo direito do domo da Baia 1
+  servoEsquerdo1.attach(pinoServoEsquerdo1);  // Servo esquerdo do domo da Baia 2
+  servoEsquerdo2.attach(pinoServoEsquerdo2);  // Servo esquerdo do domo da Baia 2
+
+  // Posicionar servos inicialmente
+  solenoideBaia1.write(ServoFechado);    // Posição inicial da tubulação Baia 1 (fechada)
+  solenoideBaia2.write(ServoFechado);    // Posição inicial da tubulação Baia 2 (fechada)
+  servoDireito1.write(ServoFechado);    // Posição inicial do domo Baia 1
+  servoDireito2.write(ServoFechado);    // Posição inicial do domo Baia 1
+  servoEsquerdo1.write(ServoFechado);   // Posição inicial do domo Baia 2
+  servoEsquerdo2.write(ServoFechado);   // Posição inicial do domo Baia 2
+}
+
+// [FUNÇÕES DOS SERVOS QUANTO A ILUMINAÇÃO] 
+
+//Função para controlar os servos do domo
+void abrirBaia1() { 
+  servoDireito1.write(ServoAberto);
+  servoDireito2.write(180 - ServoAberto);
+  domoFechado = false;
+  aguardandoIntervalo = false;
+  offLed1();  // Desliga o LED da Baia 1
+}
+
+void fecharBaia1() {
+  servoDireito1.write(ServoFechado);
+  servoDireito2.write(ServoFechado);
+  domoFechado = true;
+  aguardandoIntervalo = true;
+  tempoAnterior = millis();  // Armazena o momento do fechamento
+  onLed1();  // Liga o LED da Baia 1
+}
+
+void abrirBaia2() {
+  servoEsquerdo1.write(ServoAberto);
+  servoEsquerdo2.write(180 - ServoAberto);
+  domoFechado = false;
+  aguardandoIntervalo = false;
+  offLed2();  // Desliga o LED da Baia 2
+}
+
+void fecharBaia2() {
+  servoEsquerdo1.write(ServoFechado);
+  servoEsquerdo2.write(ServoFechado);
+  domoFechado = true;
+  aguardandoIntervalo = true;
+  tempoAnterior = millis();  // Armazena o momento do fechamento
+  onLed2();  // Liga o LED da Baia 2
+}
+
+// Função que marca o tempo que a baia estará fechada, (tempo em segundos, número da baia)
+void intervaloFechado(unsigned long intervaloemSegundos, int baia) {
+  unsigned long intervaloMillis = intervaloemSegundos * 1000;  // Converte segundos para milissegundos
+  unsigned long tempoAtual = millis();                         // Obtém o tempo atual
+
+  // Verifica se o domo está fechado e se o tempo do intervalo já passou
+  if (domoFechado && aguardandoIntervalo && (tempoAtual - tempoAnterior >= intervaloMillis)) {
+    if (baia == 1) {
+      abrirBaia1();  // Abre a Baia 1 após o intervalo
+    } else if (baia == 2) {
+      abrirBaia2();  // Abre a Baia 2 após o intervalo
+    }
+  }
+}
+
+void onLed1() {
+  digitalWrite(ledBaia1, HIGH);  // Liga o LED da Baia 1
+}
+
+void offLed1() {
+  digitalWrite(ledBaia1, LOW);   // Desliga o LED da Baia 1
+}
+
+void onLed2() {
+  digitalWrite(ledBaia2, HIGH);  // Liga o LED da Baia 2
+}
+
+void offLed2() {
+  digitalWrite(ledBaia2, LOW);   // Desliga o LED da Baia 2
+}
+
+// [FUNÇÕES RELACIONADAS A BOMBA DE ÁGUA E SENSORES DE UMIDADE E NÍVEL]
+
+void UmidadeAtualBA1() {
+  umidadeBaia1 = analogRead(umidadeSensorBaia1); //Umidade da baia 1
+  
+}
+
+void UmidadeAtualBA2() {
+  umidadeBaia2 = analogRead(umidadeSensorBaia2); //Umidade da baia 2
+}
+
+void ligarBombaBA1() {
+  if (umidadeBaia1 >= umidadeDesejada1) { 
+    digitalWrite(pinoReleBomba, HIGH); //Ligar a bomba caso a umidade atual da baia1 seja menor doq a desejada 
+    solenoideBaia1.write(ServoAberto); //Abrindo solenoide
+  } else {
+    digitalWrite(pinoReleBomba, LOW);  //Desliga a bomba 
+    solenoideBaia1.write(ServoFechado);//Fecha a solenoide 
+  }
+}
+
+void ligarBombaBA2(){
+  if (umidadeBaia2 >= UmidadeDesejada2){
+    digitalWrite(pinoReleBomba, HIGH);
+    solenoideBaia2.write(ServoAberto);
+  } else{
+    digitalWrite(pinoReleBomba, LOW);
+    solenoideBaia2.write(ServoFechado);
+  }
+}
+
+void loop() {
+  UmidadeAtualBA1(); // Lê a umidade da Baia 1
+  UmidadeAtualBA2(); // Lê a umidade da Baia 2
+
+  ligarBombaBA1();   // Verifica e liga a bomba para a Baia 1
+  
+  // Você pode adicionar mais lógica aqui, como gerenciar a Baia 2 e os intervalos
+  intervaloFechado(60, 1); // Exemplo: 60 segundos de intervalo para a Baia 1
+}
